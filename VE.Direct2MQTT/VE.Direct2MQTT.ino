@@ -57,7 +57,7 @@ mEEPROM pref;
 
 
 
-VEDirect ve;
+VEDirect ve[2];
 time_t last_vedirect;
 
 
@@ -75,7 +75,10 @@ void setup() {
     setClock();
     last_boot = time(nullptr);
     if ( startMQTT()) {
-      ve.begin();
+      for(int p =0; p<sizeof(VEDIRECT_RX)/sizeof(VEDIRECT_RX[0]); p++)
+      {
+        ve[p].begin(p,VEDIRECT_RX[p],VEDIRECT_TX[p]);
+      }
       // looking good; moving to loop
       return;
     }
@@ -107,12 +110,14 @@ void loop() {
   }
 #endif
   if ( abs( t - last_vedirect) >= VE_WAIT_TIME) {
-    if ( ve.getNewestBlock(&block)) {
-      last_vedirect = t;
-      log_i("New block arrived; Value count: %d, serial %d", block.kvCount, block.serial);
-      if ( checkWiFi()) {
-        sendASCII2MQTT(&block);
-        // sendOPInfo();
+    for(int v=0;v<sizeof(VEDIRECT_RX)/sizeof(VEDIRECT_RX[0]);v++){
+      if (ve[v].getNewestBlock(&block)) {
+        last_vedirect = t;
+        log_i("New block arrived; Value count: %d, serial %d", block.kvCount, block.serial);
+        if ( checkWiFi()) {
+          sendASCII2MQTT(&block);
+          // sendOPInfo();
+        }
       }
     }
   }

@@ -129,12 +129,13 @@ int mqtt_server_count = sizeof(mqtt_server) / sizeof(mqtt_server[0]);
 
 // this is the MQTT prefix; below that we use the string from VE.Direct
 // e.g. /MPPT75-15/PID  for Product ID
-String MQTT_PREFIX = "/MPPT75-15NOSSL";
-String MQTT_PARAMETER = "/MPPT75-15NOSSL/Parameter"; 
+String MQTT_PREFIX = "VICTRON";
+String MQTT_PARAMETER = "VICTRON/Parameter"; 
 #ifdef USE_ONEWIRE
-String MQTT_ONEWIRE = "/MPPT75-15NOSSL/OneWire";
+String MQTT_ONEWIRE = "VICTRON/OneWire";
 #endif
-
+#define ADD_PID_TO_PREFIX
+#define ADD_SERIAL_TO_PREFIX
 
 #ifdef USE_OTA
 /*
@@ -160,18 +161,24 @@ time_t last_ota;
 #endif
 
 /*
-   Software serial parameter
-   These are the pins for the VE.Direct connection
+   Hardware serial parameter
+   These are the pins for the VE.Direct connections
+
    WARNING: if your VE.Direct device uses 5V please use a 1kOhm/2kOhm divider for the receive line
    The sending line does not need any modification. The ESP uses 3.3V and that's it. A 5V device
-   should be able to read that voltage as input
+   should be able to read that voltage as input.
+
+   WARNING 2: If you connect to multiple VE.Direct devices then you MUST use an opto coupler 
+   to isolate the ESP32 from all the VE.Direct devices, and to isolate all the VE.Direct devices from
+   each other. Ground from device 1 CANT be connected to ground of device 2.
 */
 #ifndef VEDIRECT_RX
-#define VEDIRECT_RX 33  // connected to TX of the VE.Direct device; ATTENTION divider may be needed, see abowe
+const int VEDIRECT_RX[] ={33};  // connected to TX of the VE.Direct device; ATTENTION divider may be needed, see abowe
 #endif
 #ifndef VEDIRECT_TX
-#define VEDIRECT_TX 32 // connected to RX of the VE:DIRECT device
+const int VEDIRECT_TX[] ={32}; // connected to RX of the VE:DIRECT device
 #endif
+//#define SERIAL_DEBUG_DISABLE
 
 /*
    Depending on the DE.Direct device there will be several Key/Value pairs;
@@ -196,3 +203,20 @@ time_t last_ota;
    Packets during OTA or OneWire will be discarded
 */
 int VE_WAIT_TIME = 1; // in s
+
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C6) //S3 //C6
+  #define MAX_PORTS 3
+#elif defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32C3) //S2 //C3
+  #define MAX_PORTS 2
+#else 
+#error "Unknown chip"
+#endif
+
+#ifndef SERIAL_DEBUG_DISABLE
+static_assert((sizeof(VEDIRECT_RX) /sizeof(VEDIRECT_RX[0])<MAX_PORTS),"Device does not have enough serial ports. One more can be freed by defining #SERIAL_DEBUG_DISABLE");
+#else
+static_assert((sizeof(VEDIRECT_RX) /sizeof(VEDIRECT_RX[0])<=MAX_PORTS),"Device does not have enough serial ports");
+#endif
+
+static_assert((sizeof(VEDIRECT_RX) /sizeof(VEDIRECT_RX[0])==(sizeof(VEDIRECT_TX) /sizeof(VEDIRECT_TX[0]))),"VEDIRECT_RX and VEDIRECT_TX must have same number of items");
+

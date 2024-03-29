@@ -161,10 +161,20 @@ boolean endMQTT() {
 // Send ASCII data from passive mode to MQTT
 //
 boolean sendASCII2MQTT(VEDirectBlock_t * block) {
+  log_d("Block Device Serial Number: %s",block->device_serial_number.c_str());
   for (int i = 0; i < block->kvCount; i++) {
     String key = block->b[i].key;
     String value = block->b[i].value;
-    String topic = MQTT_PREFIX + "/" + key;
+    String topic = MQTT_PREFIX;
+    #ifdef ADD_PID_TO_PREFIX
+      topic = topic + "/" + block->device_pid;
+    #endif
+
+    #ifdef ADD_SERIAL_TO_PREFIX
+      topic = topic + "/" + block->device_serial_number;
+    #endif
+
+    topic = topic + "/" + key;
     if ( !espMQTT.connected()) {
       startMQTT();
     }

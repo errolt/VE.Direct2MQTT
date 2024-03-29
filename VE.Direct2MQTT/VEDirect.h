@@ -31,7 +31,7 @@
 #define VEDIRECT_H
 
 #include <StringSplitter.h>
-#include "vedirectSerial.h"
+
 
 typedef struct VEDirectKeyValue_t {
   String key;
@@ -42,6 +42,8 @@ typedef struct VEDirectBlock_t {
   VEDirectKeyValue_t b[MAX_KEY_VALUE_COUNT];
   int kvCount;
   int serial;
+  String device_serial_number;
+  String device_pid;
 };
 
 
@@ -49,9 +51,12 @@ typedef struct VEDirectBlock_t {
 
 class VEDirect {
   public:
-    void begin();
+    void begin(int VEDIRECT_PORT, int RX, int TX);
     boolean addToASCIIBlock(String s);
     boolean getNewestBlock(VEDirectBlock_t *b);
+    int _VEDIRECT_PORT;
+    int _VEDIRECT_RX;
+    int _VEDIRECT_TX;
 
 
   private:
@@ -78,18 +83,20 @@ class VEDirect {
 void serialTask(void * pointer) {
   VEDirect *ve = (VEDirect *) pointer;
   String data;
-  startVEDirectSerial();
+  HardwareSerial port(ve->_VEDIRECT_PORT);  
+  port.begin(19200, SERIAL_8N1, ve->_VEDIRECT_RX, ve->_VEDIRECT_TX);
   while ( true ) {
-    if ( Serial1.available()) {
-      //      char s = Serial1.read();
+    if ( port.available()) {
+      //      char s = port.read();
       //      log_d("Read: %c:%d", s, s);
       //      if ( s == '\n') {
       //        log_d("received start");
       // begin of a datafield or frame
-      data = Serial1.readStringUntil('\n'); // read label and value
+      data = port.readStringUntil('\n'); // read label and value
       //log_d("Received Data: \"%s\"", data.c_str());
       if ( data.length() > 0) {
-        data.replace("\r\n", ""); // Strip carriage return newline; not part of the data
+        data.replace("\n", ""); // Strip carriage return newline; not part of the data
+        data.replace("\r", ""); // Strip carriage return newline; not part of the data
         ve->addToASCIIBlock(data);
         log_d("Stack free: %5d", uxTaskGetStackHighWaterMark(NULL));
       }
@@ -104,9 +111,17 @@ void serialTask(void * pointer) {
 
 
 
-void VEDirect::begin() {
+void VEDirect::begin(int VEDIRECT_PORT, int RX, int TX) {
   _newest_block = -1;
   _incoming_block = _incoming_keyValueCount = 0;
+  #ifdef SERIAL_DEBUG_DISABLE
+  _VEDIRECT_PORT=VEDIRECT_PORT;
+  #else
+  _VEDIRECT_PORT=VEDIRECT_PORT+1;
+  #endif
+  _VEDIRECT_RX=RX;
+  _VEDIRECT_TX=TX;
+  
   // create a task to handle the serial input
   xTaskCreate(
     serialTask,     /* Task function. */
@@ -115,6 +130,7 @@ void VEDirect::begin() {
     this,             /* Parameter passed as input of the task */
     1,                /* Priority of the task. */
     &tHandle);        /* Task handle. */
+
 }
 
 void VEDirect::_increaseNewestBlock() {
@@ -145,7 +161,17 @@ boolean VEDirect::addToASCIIBlock(String s) {
   StringSplitter sp = StringSplitter(s, '\t', 2);
   String historical = "";
   if ( sp.getItemCount() == 2) { // sometime checksum has historical data attached
-    log_d("Received Key/value: \"%s\":\"%s\"", sp.getItemAtIndex(0).c_str(), sp.getItemAtIndex(1).c_str());
+    log_d("Received Key/value: \"%s\":\"%s\"", sp.getItemAtIndex(0).c_str(), Value);
+    if(sp.getItemAtIndex(0)=="SER#") {
+      //Device Serial Number
+      block[_incoming_block].device_serial_number=sp.getItemAtIndex(1);
+      log_d("Got Serial: %s", block[_incoming_block].device_serial_number.c_str());
+    }
+    if(sp.getItemAtIndex(0)=="PID") {
+      //Product ID
+      block[_incoming_block].device_pid=sp.getItemAtIndex(1);
+      log_d("Got PID: %s", block[_incoming_block].device_pid.c_str());
+    }
     if ( _incoming_keyValueCount < MAX_KEY_VALUE_COUNT) {
       block[_incoming_block].b[_incoming_keyValueCount].key = sp.getItemAtIndex(0);
       if ( sp.getItemAtIndex(0).equals("Checksum")) {
@@ -201,6 +227,8 @@ boolean VEDirect::getNewestBlock(VEDirectBlock_t *b) {
   for (int i = 0; i < kv_count; i++) {
     b->b[i] = block[block_num].b[i];
   }
+  b->device_serial_number=block[block_num].device_serial_number;
+  b->device_pid=block[block_num].device_pid;  
   return true;
 }
 
